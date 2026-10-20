@@ -3,6 +3,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from selenium import webdriver
+from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.common.by import By
@@ -16,6 +17,7 @@ RESULTS_URL = (
     "b=2K%2CActivision%2CBandai+Namco%2CCapcom%2CElectronic+Arts%2C"
     "Nintendo%2CPlaystation%2CSega%2CSquare+Enix%2CUbisoft%2CXbox"
 )
+BEST_PRICE_TIMEOUT_SECONDS = 1
 
 
 def currency_to_int(value: Any) -> Optional[int]:
@@ -50,14 +52,52 @@ def find_money(text: str, pattern: str) -> Optional[int]:
 def infer_console(name: str) -> str:
     name_lower = name.lower()
 
-    if "switch" in name_lower:
-        return "Switch"
     if "xbox" in name_lower:
-        return "Xbox"
-    if re.search(r"\bps[245]?\b|\bplaystation\b", name_lower):
-        return "PlayStation"
+            return "xbox"
+    elif "switch" in name_lower:
+        return "switch"
+    elif re.search(r"\bps[245]?\b|\bplaystation\b", name_lower):
+        return "playstation"
+    else:
+        return ""
+    
 
-    return ""
+
+def get_best_price(driver: webdriver.Chrome) -> Any:
+    history_tab = driver.find_elements(By.ID, "price-history-tab")
+    if history_tab:
+        driver.execute_script(
+            "arguments[0].scrollIntoView({block: 'center'});",
+            history_tab[0],
+        )
+        if history_tab[0].get_attribute("aria-selected") != "true":
+            history_tab[0].click()
+
+    best_price_xpath = (
+        '//*[@id="price-history-panel"]/div/div[2]/div/div/div[1]/'
+        "div/div[4]/div[1]/div[2]/div[2]"
+    )
+    try:
+        best_price_text = WebDriverWait(
+            driver, BEST_PRICE_TIMEOUT_SECONDS
+        ).until(
+            lambda current_driver: next(
+                (
+                    text
+                    for element in current_driver.find_elements(
+                        By.XPATH, best_price_xpath
+                    )
+                    for text in [element.get_attribute("textContent").strip()]
+                    if text
+                ),
+                False,
+            )
+        )
+    except TimeoutException:
+        return ""
+
+    best_price = currency_to_int(best_price_text)
+    return best_price if best_price is not None else None
 
 
 def extract_product(driver: webdriver.Chrome, product_id: str) -> Dict[str, Any]:
@@ -66,6 +106,7 @@ def extract_product(driver: webdriver.Chrome, product_id: str) -> Dict[str, Any]
     name = product_data.get("name", "")
     discount_price = currency_to_int(offers.get("price"))
 
+    best_price = get_best_price(driver)
     page_text = driver.find_element(By.TAG_NAME, "body").text
     savings = find_money(page_text, r"ahorro\s+real\s*:\s*\$?\s*([\d.]+)")
     discount_match = re.search(
@@ -84,15 +125,19 @@ def extract_product(driver: webdriver.Chrome, product_id: str) -> Dict[str, Any]
     # Knasta presents the current price, the real saving, and the percentage
     # below the usual price in the rendered detail page.
     price = discount_price + savings if discount_price is not None and savings else discount_price
-    usual_price = price
-    if discount_price is not None and discount is not None and discount < 100:
-        usual_price = round(discount_price / (1 - discount / 100))
-
-    best_price = find_money(
+    usual_price = find_money(
         page_text,
-        r"(?:mejor\s+precio|precio\s+mínimo|precio\s+más\s+bajo)"
-        r"\s*:\s*\$?\s*([\d.]+)",
+        r"precio\s+habitual\s*\$?\s*(\d[\d.]*)",
     )
+    if (
+        usual_price is None
+        and discount_price is not None
+        and discount is not None
+        and discount < 100
+    ):
+        usual_price = round(discount_price / (1 - discount / 100))
+    if usual_price is None:
+        usual_price = None
 
     return {
         "id": product_id,
