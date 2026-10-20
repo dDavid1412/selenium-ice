@@ -2,6 +2,7 @@ import json
 import re
 from typing import Any, Dict, List, Optional
 
+from config import database, models
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.chrome.options import Options as ChromeOptions
@@ -60,7 +61,15 @@ def infer_console(name: str) -> str:
         return "playstation"
     else:
         return ""
-    
+
+
+def first_image_url(image: Any) -> Optional[str]:
+        if isinstance(image, str):
+            return image
+        if isinstance(image, list):
+            return next((item for item in image if isinstance(item, str)), None)
+        return None
+
 
 def get_previous_price(driver: webdriver.Chrome) -> Optional[int]:
     previous_price_xpath = (
@@ -125,7 +134,7 @@ def extract_product(driver: webdriver.Chrome, product_id: str) -> Dict[str, Any]
         page_text,
         flags=re.IGNORECASE,
     )
-    discount = (
+    discount: Optional[float] = (
         float(discount_match.group(1).replace(",", "."))
         if discount_match
         else None
@@ -156,8 +165,51 @@ def extract_product(driver: webdriver.Chrome, product_id: str) -> Dict[str, Any]
         "best_price": best_price,
         "discount": discount,
         "discount_price": discount_price,
-        "image": product_data.get("image"),
+        "image": first_image_url(product_data.get("image")),
     }
+
+
+def save_products(products: List[Dict[str, Any]]) -> None:
+    database.Base.metadata.create_all(bind=database.engine)
+    with database.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "ALTER TABLE games "
+            "MODIFY COLUMN id BIGINT NOT NULL AUTO_INCREMENT"
+        )
+
+    db = database.SessionLocal()
+
+    try:
+        for product in products:
+            product_id = currency_to_int(product.get("id"))
+            if product_id is None:
+                raise ValueError(f"Invalid product id: {product.get('id')!r}")
+
+            game = db.get(models.Game, product_id)
+            values = {
+                "id": product_id,
+                "name": product["name"],
+                "price": product["price"],
+                "platform": product["console"],
+                "usual_price": product["usual_price"],
+                "best_price": product["best_price"],
+                "discount": product["discount"],
+                "discount_price": product["discount_price"],
+                "image": first_image_url(product.get("image")),
+            }
+
+            if game is None:
+                db.add(models.Game(**values))
+            else:
+                for field, value in values.items():
+                    setattr(game, field, value)
+
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
 
 
 def get_product_urls(driver: webdriver.Chrome, wait: WebDriverWait) -> List[str]:
@@ -207,6 +259,8 @@ def main() -> None:
             product_id = product_url.rstrip("/").split("/")[-2]
             products.append(extract_product(driver, product_id))
 
+        save_products(products)
+        print(f"Products saved to database: {len(products)}")
         print(json.dumps(products, indent=2, ensure_ascii=False))
     finally:
         driver.quit()

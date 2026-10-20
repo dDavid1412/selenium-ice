@@ -1,4 +1,5 @@
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from config import models
 from config import database
@@ -7,6 +8,16 @@ from config import schemas
 models.Base.metadata.create_all(bind=database.engine)
 
 app = FastAPI()
+
+# Permite que el frontend de Vite (http://localhost:5173) consuma la API.
+# Ajusta allow_origins al dominio real cuando despliegues a producción.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 def get_db():
     db = database.SessionLocal()
