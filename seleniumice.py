@@ -28,7 +28,7 @@ chrome_options = ChromeOptions()
 driver = webdriver.Chrome(service=chrome_service, options=chrome_options)
 # Abrir una página
 
-driver.get("https://https://knasta.cl/results?q=videojuegos&order=asc/")
+driver.get("https://knasta.cl/results?q=videojuegos&order=asc/")
 
 
 time.sleep(3)
