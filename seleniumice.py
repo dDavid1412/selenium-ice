@@ -17,7 +17,7 @@ RESULTS_URL = (
     "b=2K%2CActivision%2CBandai+Namco%2CCapcom%2CElectronic+Arts%2C"
     "Nintendo%2CPlaystation%2CSega%2CSquare+Enix%2CUbisoft%2CXbox"
 )
-BEST_PRICE_TIMEOUT_SECONDS = 1
+BEST_PRICE_TIMEOUT_SECONDS = 0.5
 
 
 def currency_to_int(value: Any) -> Optional[int]:
@@ -62,8 +62,19 @@ def infer_console(name: str) -> str:
         return ""
     
 
+def get_previous_price(driver: webdriver.Chrome) -> Optional[int]:
+    previous_price_xpath = (
+        '//*[@id="body-principal"]/main/article/div[2]/section/div[2]/'
+        "div[2]/div/span[2]"
+    )
+    previous_price_elements = driver.find_elements(By.XPATH, previous_price_xpath)
+    if not previous_price_elements:
+        return None
 
-def get_best_price(driver: webdriver.Chrome) -> Any:
+    return currency_to_int(previous_price_elements[0].text)
+
+
+def get_best_price(driver: webdriver.Chrome) -> Optional[int]:
     history_tab = driver.find_elements(By.ID, "price-history-tab")
     if history_tab:
         driver.execute_script(
@@ -94,10 +105,10 @@ def get_best_price(driver: webdriver.Chrome) -> Any:
             )
         )
     except TimeoutException:
-        return ""
+        return None
 
     best_price = currency_to_int(best_price_text)
-    return best_price if best_price is not None else None
+    return best_price
 
 
 def extract_product(driver: webdriver.Chrome, product_id: str) -> Dict[str, Any]:
@@ -106,9 +117,9 @@ def extract_product(driver: webdriver.Chrome, product_id: str) -> Dict[str, Any]
     name = product_data.get("name", "")
     discount_price = currency_to_int(offers.get("price"))
 
+    price = get_previous_price(driver)
     best_price = get_best_price(driver)
     page_text = driver.find_element(By.TAG_NAME, "body").text
-    savings = find_money(page_text, r"ahorro\s+real\s*:\s*\$?\s*([\d.]+)")
     discount_match = re.search(
         r"(\d+(?:[.,]\d+)?)\s*%\s*(?:bajo|de descuento)",
         page_text,
@@ -122,9 +133,6 @@ def extract_product(driver: webdriver.Chrome, product_id: str) -> Dict[str, Any]
     if discount is not None and discount.is_integer():
         discount = int(discount)
 
-    # Knasta presents the current price, the real saving, and the percentage
-    # below the usual price in the rendered detail page.
-    price = discount_price + savings if discount_price is not None and savings else discount_price
     usual_price = find_money(
         page_text,
         r"precio\s+habitual\s*\$?\s*(\d[\d.]*)",
@@ -172,6 +180,7 @@ def get_product_urls(driver: webdriver.Chrome, wait: WebDriverWait) -> List[str]
 
 def main() -> None:
     chrome_options = ChromeOptions()
+    chrome_options.page_load_strategy = "eager"
     # Uncomment to run without opening a browser window:
     # chrome_options.add_argument("--headless")
 
