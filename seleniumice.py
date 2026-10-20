@@ -28,30 +28,7 @@ chrome_options = ChromeOptions()
 driver = webdriver.Chrome(service=chrome_service, options=chrome_options)
 # Abrir una página
 
-driver.get("https://knasta.cl/results?q=videojuegos&order=asc/")
+driver.get("https://knasta.cl/results?q=videojuegos&order=asc&b=2K%2CActivision%2CBandai+Namco%2CCapcom%2CElectronic+Arts%2CNintendo%2CPlaystation%2CSega%2CSquare+Enix%2CUbisoft%2CXbox")
 
 
-time.sleep(3)
 
-
-login_button = driver.find_element(By.XPATH, "/html/body/div[2]/div[1]/header/div/div/div/div/div/header/div/div[3]/div[5]/span/button")
-
-login_button.click()
-
-time.sleep(1)
-
-login_input = driver.find_element(By.XPATH, "//input[@placeholder='username@example.com']")
-
-time.sleep(1)
-
-login_input.click()
-
-login_input.send_keys("")
-
-time.sleep(1)
-
-submit_login = driver.find_element(By.XPATH, "/html/body/div[3]/div/div[2]/div/div/div[2]/div[1]/div[2]/div/div/div/div/div[1]/div/div[2]/button")
-
-submit_login.click()
-
-time.sleep(10)
