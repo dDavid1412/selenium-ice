@@ -14,3 +14,4 @@ class Game(Base):
     discount = Column(Integer, nullable=True, index=True)
     discount_price = Column(Integer, nullable=True, index=True)
     image = Column(String(2048), nullable=True)
+    url = Column(String(2048), nullable=True)

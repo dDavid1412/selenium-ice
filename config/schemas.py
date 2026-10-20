@@ -10,6 +10,7 @@ class GameCreate(BaseModel):
     discount: int | None = None
     discount_price: int | None = None
     image: str | None = None
+    url: str | None = None
 
 
 class GameResponse(GameCreate):

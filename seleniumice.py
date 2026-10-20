@@ -19,6 +19,9 @@ RESULTS_URL = (
     "Nintendo%2CPlaystation%2CSega%2CSquare+Enix%2CUbisoft%2CXbox"
 )
 BEST_PRICE_TIMEOUT_SECONDS = 0.5
+SELLER_URL_XPATH = (
+    '//*[@id="body-principal"]/main/article/div[2]/section/div[2]/div[4]/a'
+)
 
 
 def currency_to_int(value: Any) -> Optional[int]:
@@ -69,6 +72,15 @@ def first_image_url(image: Any) -> Optional[str]:
         if isinstance(image, list):
             return next((item for item in image if isinstance(item, str)), None)
         return None
+
+
+def get_seller_url(driver: webdriver.Chrome) -> Optional[str]:
+        seller_links = driver.find_elements(By.XPATH, SELLER_URL_XPATH)
+        if not seller_links:
+            return None
+
+        href = seller_links[0].get_attribute("href")
+        return href.strip() if href else None
 
 
 def get_previous_price(driver: webdriver.Chrome) -> Optional[int]:
@@ -166,6 +178,7 @@ def extract_product(driver: webdriver.Chrome, product_id: str) -> Dict[str, Any]
         "discount": discount,
         "discount_price": discount_price,
         "image": first_image_url(product_data.get("image")),
+        "url": get_seller_url(driver),
     }
 
 
@@ -176,6 +189,17 @@ def save_products(products: List[Dict[str, Any]]) -> None:
             "ALTER TABLE games "
             "MODIFY COLUMN id BIGINT NOT NULL AUTO_INCREMENT"
         )
+        url_column_exists = connection.exec_driver_sql(
+            "SELECT COUNT(*) "
+            "FROM information_schema.columns "
+            "WHERE table_schema = DATABASE() "
+            "AND table_name = 'games' "
+            "AND column_name = 'url'"
+        ).scalar()
+        if not url_column_exists:
+            connection.exec_driver_sql(
+                "ALTER TABLE games ADD COLUMN url VARCHAR(2048) NULL"
+            )
 
     db = database.SessionLocal()
 
@@ -196,6 +220,7 @@ def save_products(products: List[Dict[str, Any]]) -> None:
                 "discount": product["discount"],
                 "discount_price": product["discount_price"],
                 "image": first_image_url(product.get("image")),
+                "url": product.get("url"),
             }
 
             if game is None:
